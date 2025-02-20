@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Arena</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #000;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(20, 1fr);
+            grid-template-rows: repeat(11, 1fr);
+            gap: 2px;
+            background-color: #522700;
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 20 / 11;
+        }
+
+        .cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #964901;
+            color: white;
+            font-size: 24px;
+            border: 2px solid #ff7b00;
+            position: relative;
+        }
+
+        .player, .enemy {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+        }
+
+        .player {
+            background-color: #0655ff;
+        }
+
+        .enemy {
+            background-color: #c37dfe;
+            font-size: 35px;
+            font-weight: bold;
+        }
+
+        .yellow-square {
+            background-color: red;
+            color: black;
+            font-weight: bold;
+            font-size: 40px;
+        }
+
+        .yellow-dot {
+            background-color: gold;
+            color: black;
+        }
+
+        h1, h2 {
+            text-align: center;
+            margin: 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        #equation-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .tituloeq {
+            font-size: 50px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .equacao {
+            font-size: 70px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        #answer {
+            font-size: 30px;
+            width: 200px;
+            margin-bottom: 20px;
+            text-align: center;
+            height: 52px;
+        }
+
+        #submit-answer {
+            background-color: #03c903;
+            font-weight: bold;
+            font-size: 25px;
+            border: 1px solid #525151;
+            padding: 10px 10px;
+            cursor: pointer;
+        }
+
+        #scoreboard {
+            width: 100%;
+            padding: 10px;
+            background-color: #000;
+            color: white;
+            text-align: center;
+        }
+
+        .tituloscore {
+            font-size: 50px;
+            margin-top: 10px;
+            background: linear-gradient(270deg, red, orange, yellow, #fce40b, #1cccf8, #ff39e5, #eee482);
+            color: black;
+            font-weight: bold;
+            width: 100%;
+            text-align: center;
+            border: 2px solid #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <div id="board"></div>
+        <div id="equation-modal" class="hidden">
+            <h2 class="tituloeq">Resolva!!!</h2>
+            <div id="equation" class="equacao"></div>
+            <input type="number" id="answer" placeholder="Sua resposta">
+            <button id="submit-answer">ENVIAR</button>
+        </div>
+    </div>
+    <div id="scoreboard">
+        <h2 class="tituloscore">Score: <span id="score">0</span></h2>
+    </div>
+    <script>
+        const boardSize = { columns: 20, rows: 11 };
+        const player = { x: 0, y: 0, element: null, canMove: true };
+        const enemies = [];
+        let score = 0;
+        let correctAnswers = 0;
+        const pairs = [];
+        const enemyMoveInterval = 700;
+        let enemyMoveIntervalId;
+
+        for (let i = 1; i <= 10; i++) {
+            for (let j = 1; j <= 10; j++) {
+                pairs.push([i, j]);
+            }
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        shuffle(pairs);
+        let currentPairIndex = 0;
+
+        function generateNextEquation() {
+            const equationType = Math.random();
+            if (equationType < 0.33) {
+                if (currentPairIndex >= pairs.length) {
+                    currentPairIndex = 0;
+                    shuffle(pairs);
+                }
+                const [multiplier, multiplicand] = pairs[currentPairIndex];
+                currentPairIndex++;
+                return `${multiplier} x ${multiplicand}`;
+            } else if (equationType < 0.66) {
+                let a, b;
+                do {
+                    a = Math.floor(Math.random() * 100) + 1;
+                    b = Math.floor(Math.random() * 100) + 1;
+                } while (a - b <= 0);
+                return `${a} - ${b}`;
+            } else {
+                const a = Math.floor(Math.random() * 100) + 1;
+                const b = Math.floor(Math.random() * 100) + 1;
+                return `${a} + ${b}`;
+            }
+        }
+
+        function calculateEquation(equation) {
+            try {
+                const validEquation = equation.replace(/x/g, '*');
+                return eval(validEquation);
+            } catch {
+                return null;
+            }
+        }
+
+        function createBoard() {
+            const board = document.getElementById('board');
+            for (let y = 0; y < boardSize.rows; y++) {
+                for (let x = 0; x < boardSize.columns; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+
+                    if (Math.random() < 0.12) {
+                        cell.classList.add('yellow-square');
+                        cell.innerHTML = '?';
+                    } else if (Math.random() < 0.2) {
+                        cell.classList.add('yellow-dot');
+                    }
+
+                    board.appendChild(cell);
+                }
+            }
+        }
+
+        function createPlayer() {
+            player.element = document.createElement('div');
+            player.element.className = 'player';
+            player.element.innerText = "🤖";
+            getCell(player.x, player.y).appendChild(player.element);
+        }
+
+        function createEnemy() {
+            let enemy;
+            let tries = 0;
+            do {
+                enemy = { x: getRandomInt(0, boardSize.columns - 1), y: getRandomInt(0, boardSize.rows - 1), element: null };
+                tries++;
+            } while (isCloseToPlayerOrOtherEnemies(enemy) && tries < 100);
+
+            enemy.element = document.createElement('div');
+            enemy.element.className = 'enemy';
+            enemy.element.innerText = "👾";
+            getCell(enemy.x, enemy.y).appendChild(enemy.element);
+            enemies.push(enemy);
+        }
+
+        function isCloseToPlayerOrOtherEnemies(enemy) {
+            const distance = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+            if (distance(player, enemy) < 3) return true;
+            for (const otherEnemy of enemies) {
+                if (distance(otherEnemy, enemy) < 3) return true;
+            }
+            return false;
+        }
+
+        function getRandomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function getCell(x, y) {
+            return document.querySelector(`.cell[data-x='${x}'][data-y='${y}']`);
+        }
+
+        function movePlayer(dx, dy) {
+            if (!player.canMove) return;
+
+            const newX = player.x + dx;
+            const newY = player.y + dy;
+
+            if (newX >= 0 && newX < boardSize.columns && newY >= 0 && newY < boardSize.rows) {
+                const currentCell = getCell(player.x, player.y);
+                currentCell.removeChild(player.element);
+                player.x = newX;
+                player.y = newY;
+                const newCell = getCell(player.x, player.y);
+                newCell.appendChild(player.element);
+
+                if (newCell.classList.contains('yellow-square')) {
+                    showEquationModal();
+                    stopEnemies();
+                } else if (newCell.classList.contains('yellow-dot')) {
+                    score++;
+                    newCell.classList.remove('yellow-dot');
+                    addRandomYellowDot();
+                    updateScore();
+                }
+
+                checkCollisionWithEnemies();
+            }
+        }
+
+        function moveEnemy(enemy) {
+            const directions = [
+                { dx: -1, dy: 0 },
+                { dx: 1, dy: 0 },
+                { dx: 0, dy: -1 },
+                { dx: 0, dy: 1 }
+            ];
+            const direction = directions[Math.floor(Math.random() * directions.length)];
+            const newX = enemy.x + direction.dx;
+            const newY = enemy.y + direction.dy;
+
+            if (newX >= 0 && newX < boardSize.columns && newY >= 0 && newY < boardSize.rows) {
+                const currentCell = getCell(enemy.x, enemy.y);
+                currentCell.removeChild(enemy.element);
+                enemy.x = newX;
+                enemy.y = newY;
+                const newCell = getCell(enemy.x, enemy.y);
+                newCell.appendChild(enemy.element);
+            }
+
+            checkCollisionWithEnemies();
+        }
+
+        function stopEnemies() {
+            clearInterval(enemyMoveIntervalId);
+        }
+
+        function restartEnemies() {
+            enemyMoveIntervalId = setInterval(() => {
+                enemies.forEach(moveEnemy);
+            }, enemyMoveInterval);
+        }
+
+        function addRandomYellowDot() {
+            let cell;
+            do {
+                const x = getRandomInt(0, boardSize.columns - 1);
+                const y = getRandomInt(0, boardSize.rows - 1);
+                cell = getCell(x, y);
+            } while (cell.classList.contains('yellow-square') || cell.classList.contains('yellow-dot'));
+
+            cell.classList.add('yellow-dot');
+        }
+
+        function addRandomYellowSquare() {
+            let cell;
+            do {
+                const x = getRandomInt(0, boardSize.columns - 1);
+                const y = getRandomInt(0, boardSize.rows - 1);
+                cell = getCell(x, y);
+            } while (cell.classList.contains('yellow-square') || cell.classList.contains('yellow-dot'));
+
+            cell.classList.add('yellow-square');
+            cell.innerHTML = '?';
+        }
+
+        function updateScore() {
+            document.getElementById('score').innerText = score;
+        }
+
+        function showEquationModal() {
+            player.canMove = false;
+            const equationModal = document.getElementById('equation-modal');
+            const equationText = generateNextEquation();
+            document.getElementById('equation').innerText = equationText;
+            equationModal.classList.remove('hidden');
+        }
+
+        document.getElementById('submit-answer').addEventListener('click', function () {
+            const answer = parseFloat(document.getElementById('answer').value);
+            const equation = document.getElementById('equation').innerText;
+            const correctAnswer = calculateEquation(equation);
+
+            if (answer === correctAnswer) {
+                score += 50;
+                correctAnswers++;
+                updateScore();
+                const cell = getCell(player.x, player.y);
+                if (cell.classList.contains('yellow-square')) {
+                    cell.classList.remove('yellow-square');
+                    cell.innerHTML = '';
+                    addRandomYellowSquare();
+                }
+                if (correctAnswers % 2 === 0) {
+                    createEnemy();
+                }
+                hideEquationModal();
+                player.canMove = true;
+                restartEnemies();
+            } else {
+                gameOver();
+            }
+        });
+
+        function hideEquationModal() {
+            document.getElementById('equation-modal').classList.add('hidden');
+            document.getElementById('answer').value = '';
+            getCell(player.x, player.y).appendChild(player.element);
+        }
+
+        function checkCollisionWithEnemies() {
+            enemies.forEach(enemy => {
+                if (player.x === enemy.x && player.y === enemy.y) {
+                    gameOver();
+                }
+            });
+        }
+
+        function gameOver() {
+            alert('Game Over');
+            location.reload();
+        }
+
+        function initGame() {
+            createBoard();
+            createPlayer();
+            createEnemy();
+            enemyMoveIntervalId = setInterval(() => {
+                enemies.forEach(moveEnemy);
+            }, enemyMoveInterval);
+        }
+
+        document.addEventListener('keydown', function (event) {
+            switch (event.key) {
+                case 'ArrowUp':
+                    movePlayer(0, -1);
+                    break;
+                case 'ArrowDown':
+                    movePlayer(0, 1);
+                    break;
+                case 'ArrowLeft':
+                    movePlayer(-1, 0);
+                    break;
+                case 'ArrowRight':
+                    movePlayer(1, 0);
+                    break;
+            }
+        });
+
+        document.getElementById('board').addEventListener('click', function (event) {
+            if (!player.canMove) return;
+
+            const targetCell = event.target.closest('.cell');
+            if (!targetCell) return;
+
+            const targetX = parseInt(targetCell.dataset.x, 10);
+            const targetY = parseInt(targetCell.dataset.y, 10);
+
+            const dx = targetX - player.x;
+            const dy = targetY - player.y;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (dx > 0) {
+                    movePlayer(1, 0);
+                } else if (dx < 0) {
+                    movePlayer(-1, 0);
+                }
+            } else {
+                if (dy > 0) {
+                    movePlayer(0, 1);
+                } else if (dy < 0) {
+                    movePlayer(0, -1);
+                }
+            }
+        });
+
+        window.onload = initGame;
+    </script>
+</body>
+</html>
